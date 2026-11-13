@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FindIt - Lost &amp; Found, anywhere in the world</title>
+<meta name="description" content="Report a lost or found item with its exact time and location, and see new reports appear live on a world map.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --text:#1b1f27; --muted:#667085; --line:#e4e7ec;
+    --brand:#2563eb; --brand-d:#1d4ed8; --lost:#dc2626; --found:#16a34a; --radius:12px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0f1218; --card:#171b24; --text:#e8ebf1; --muted:#9aa3b2; --line:#272d3a;}
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  button,input,select,textarea{font:inherit;color:inherit}
+  header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1000}
+  .logo{font-weight:800;font-size:20px;letter-spacing:-.02em}
+  .logo span{color:var(--brand)}
+  .tag{color:var(--muted);font-size:13px;display:none}
+  @media(min-width:760px){.tag{display:block}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:600}
+  .btn:hover{border-color:var(--brand)}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.primary:hover{background:var(--brand-d)}
+  .btn.danger{color:var(--lost)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .banner{background:#fef3c7;color:#7c2d12;padding:10px 16px;font-size:14px;border-bottom:1px solid #fde68a}
+  .banner code{background:rgba(0,0,0,.08);padding:1px 5px;border-radius:4px}
+  .app{display:grid;grid-template-columns:400px 1fr;height:calc(100vh - 57px)}
+  .panel{overflow-y:auto;border-right:1px solid var(--line);background:var(--bg)}
+  #map{height:100%;min-height:300px}
+  .filters{padding:12px 14px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;display:grid;gap:8px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);cursor:pointer;font-size:13px;font-weight:600}
+  .chip.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+  .chip.lost.on{background:var(--lost);border-color:var(--lost);color:#fff}
+  .chip.found.on{background:var(--found);border-color:var(--found);color:#fff}
+  input[type=text],input[type=search],input[type=email],input[type=datetime-local],select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card)}
+  textarea{min-height:80px;resize:vertical}
+  .small{font-size:12px;color:var(--muted)}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:#9ca3af}
+  .dot.on{background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 2s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 7px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+  .list{padding:10px;display:grid;gap:10px}
+  .item{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px;cursor:pointer;transition:.15s}
+  .item:hover{border-color:var(--brand);transform:translateY(-1px)}
+  .item.new{animation:flash 2.5s}
+  @keyframes flash{0%{background:rgba(37,99,235,.18)}100%{background:var(--card)}}
+  .thumb{width:72px;height:72px;border-radius:9px;background:var(--line);object-fit:cover;flex:none;display:grid;place-items:center;font-size:28px}
+  .item h3{margin:0 0 2px;font-size:15px}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;color:#fff;text-transform:uppercase;letter-spacing:.04em}
+  .badge.lost{background:var(--lost)} .badge.found{background:var(--found)} .badge.resolved{background:#6b7280}
+  .meta{color:var(--muted);font-size:12.5px}
+  .empty{text-align:center;color:var(--muted);padding:40px 16px}
+  dialog{border:none;border-radius:16px;padding:0;width:min(560px,94vw);max-height:92vh;background:var(--card);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  dialog::backdrop{background:rgba(10,12,18,.55)}
+  .dlg{padding:20px;overflow-y:auto;max-height:92vh}
+  .dlg h2{margin:0 0 14px}
+  .close{position:absolute;right:12px;top:10px;border:none;background:none;font-size:24px;cursor:pointer;color:var(--muted)}
+  label{display:block;font-weight:600;font-size:13px;margin:12px 0 5px}
+  .seg{display:flex;gap:8px}
+  .seg label{flex:1;margin:0;font-weight:700}
+  .seg input{display:none}
+  .seg span{display:block;text-align:center;padding:10px;border:2px solid var(--line);border-radius:10px;cursor:pointer}
+  .seg input:checked+span.l{border-color:var(--lost);background:rgba(220,38,38,.1);color:var(--lost)}
+  .seg input:checked+span.f{border-color:var(--found);background:rgba(22,163,74,.1);color:var(--found)}
+  #formMap{height:220px;border-radius:10px;border:1px solid var(--line);margin-top:6px}
+  .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+  .detail img.hero{width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin-bottom:12px}
+  .kv{display:grid;grid-template-columns:100px 1fr;gap:6px 10px;margin:12px 0}
+  .kv div:nth-child(odd){color:var(--muted);font-size:13px}
+  .contact-box{background:var(--bg);border:1px dashed var(--line);border-radius:10px;padding:12px;margin-top:10px}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;z-index:3000;transition:.3s;max-width:90vw}
+  #toast.show{transform:translateX(-50%) translateY(0)}
+  .fab{display:none}
+  @media(max-width:860px){
+    .app{grid-template-columns:1fr;grid-template-rows:42vh auto;height:auto}
+    #map{order:-1;height:42vh;position:sticky;top:57px;z-index:2}
+    .panel{border-right:none;overflow:visible}
+    .fab{display:block;position:fixed;right:16px;bottom:16px;z-index:1500;box-shadow:0 8px 24px rgba(37,99,235,.4)}
+    header #reportBtn{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Find<span>It</span></div>
+  <div class="tag">Lost &amp; found, anywhere in the world</div>
+  <div class="spacer"></div>
+  <button class="btn primary" id="reportBtn">+ Report item</button>
+  <button class="btn" id="authBtn">Sign in</button>
+</header>
+<div class="banner" id="cfgBanner" hidden>
+  Backend not connected yet. Open <code>index.html</code> and set <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> near the top of the script.
+</div>
+
+<div class="app">
+  <aside class="panel">
+    <div class="filters">
+      <div class="row">
+        <button class="chip on" data-kind="all">All</button>
+        <button class="chip lost" data-kind="lost">Lost</button>
+        <button class="chip found" data-kind="found">Found</button>
+        <span class="spacer"></span>
+        <span class="live"><span class="dot" id="liveDot"></span><span id="liveTxt">connecting</span></span>
+      </div>
+      <input type="search" id="q" placeholder="Search title, description or place">
+      <div class="row">
+        <select id="cat" style="flex:1"><option value="">All categories</option></select>
+        <select id="when" style="flex:1">
+          <option value="0">Any date</option>
+          <option value="1">Last 24 hours</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="btn" id="nearBtn" style="padding:6px 12px">Near me</button>
+        <select id="radius" style="flex:1;display:none">
+          <option value="1">within 1 km</option>
+          <option value="5" selected>within 5 km</option>
+          <option value="25">within 25 km</option>
+          <option value="100">within 100 km</option>
+        </select>
+        <label style="margin:0;font-weight:500;display:flex;gap:6px;align-items:center"><input type="checkbox" id="showResolved"> show resolved</label>
+      </div>
+      <div class="small" id="count"></div>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+  <div id="map"></div>
+</div>
+<button class="btn primary fab" id="fabBtn">+ Report item</button>
+
+<!-- Report dialog -->
+<dialog id="reportDlg">
+  <div class="dlg">
+    <button class="close" data-close>&times;</button>
+    <h2>Report an item</h2>
+    <form id="form">
+      <div class="seg">
+        <label><input type="radio" name="kind" value="lost" checked><span class="l">I lost something</span></label>
+        <label><input type="radio" name="kind" value="found"><span class="f">I found something</span></label>
+      </div>
+      <label for="f_title">What is it?</label>
+      <input type="text" id="f_title" maxlength="100" required placeholder="e.g. Black Boat earbuds case">
+      <label for="f_cat">Category</label>
+      <select id="f_cat"></select>
+      <label for="f_desc">Details (colour, brand, marks; do not include full ID numbers)</label>
+      <textarea id="f_desc" maxlength="1000"></textarea>
+      <label for="f_time">Exact date &amp; time</label>
+      <input type="datetime-local" id="f_time" required>
+      <label>Where? Search, click the map, drag the pin, or use GPS</label>
+      <div class="row">
+        <input type="text" id="f_search" placeholder="Search a place or address" style="flex:1;min-width:180px">
+        <button type="button" class="btn" id="f_searchBtn">Search</button>
+        <button type="button" class="btn" id="f_gps">Use my location</button>
+      </div>
+      <div id="formMap"></div>
+      <div class="small" id="f_coords">No location picked yet.</div>
+      <label for="f_place">Place description (optional)</label>
+      <input type="text" id="f_place" maxlength="300" placeholder="e.g. Platform 2, Majestic metro station">
+      <label for="f_photo">Photo (optional)</label>
+      <input type="file" id="f_photo" accept="image/*">
+      <label for="f_contact">How should people reach you?</label>
+      <input type="text" id="f_contact" required maxlength="200" placeholder="Phone, WhatsApp or email">
+      <div class="small">Your contact is only shown to signed-in users, never publicly.</div>
+      <div class="actions">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn primary" id="f_submit">Post report</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Detail dialog -->
+<dialog id="detailDlg"><div class="dlg detail" id="detailBody"></div></dialog>
+
+<!-- Auth dialog -->
+<dialog id="authDlg">
+  <div class="dlg">
+    <button class="close" data-close>&times;</button>
+    <h2>Sign in</h2>
+    <p class="small" style="margin-top:-8px">Signing in lets you post reports and see contact details. We email you a one-time link, so there is no password.</p>
+    <form id="authForm">
+      <label for="a_email">Email</label>
+      <input type="email" id="a_email" required placeholder="you@example.com">
+      <div class="actions">
+        <button type="button" class="btn" id="googleBtn">Continue with Google</button>
+        <button type="submit" class="btn primary" id="a_submit">Email me a link</button>
+      </div>
+    </form>
+    <p class="small" id="authMsg"></p>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ============ 1) CONFIG: paste your Supabase values here ============ */
+const SUPABASE_URL      = 'https://aflhgqzuzfeantjsmlbn.supabase.co/rest/v1/';        
+const SUPABASE_ANON_KEY = 'sb_publishable_dNlmS4Gg-yR_PlT81XRmjA_nftApGJ4';   
+/* ==================================================================== */
+
+const configured = !SUPABASE_URL.startsWith('YOUR_') && !SUPABASE_ANON_KEY.startsWith('YOUR_');
+const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+if (!configured) document.getElementById('cfgBanner').hidden = false;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CATS = {phone:'📱 Phone',wallet:'👛 Wallet / cards',keys:'🔑 Keys',bag:'🎒 Bag',documents:'📄 Documents / ID',electronics:'💻 Electronics',jewellery:'💍 Jewellery',pet:'🐾 Pet',clothing:'👕 Clothing',other:'📦 Other'};
+const catIcon = c => (CATS[c] || CATS.other).split(' ')[0];
+
+const state = { items: [], user: null, near: null, kind: 'all', fresh: new Set() };
+let map, layer, markers = new Map(), formMap, formPin, picked = null;
+
+/* ---------- helpers ---------- */
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('show'),3200); }
+function km(a,b,c,d){ const R=6371,r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b); const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function fmtExact(iso){ return new Date(iso).toLocaleString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function ago(iso){ const s=(Date.now()-new Date(iso))/1000; if(s<60)return 'just now'; const m=s/60; if(m<60)return Math.floor(m)+' min ago'; const h=m/60; if(h<24)return Math.floor(h)+' h ago'; const d=h/24; if(d<30)return Math.floor(d)+' d ago'; return Math.floor(d/30)+' mo ago'; }
+function localInputNow(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); }
+function distTxt(it){ if(!state.near) return ''; const d=km(state.near.lat,state.near.lng,it.lat,it.lng); return (d<1? Math.round(d*1000)+' m' : d.toFixed(1)+' km')+' away'; }
+function getPosition(){ return new Promise((res,rej)=>{ if(!navigator.geolocation) return rej(new Error('Geolocation is not supported')); navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude}), e=>rej(new Error(e.code===1?'Location permission denied':'Could not get your location')), {enableHighAccuracy:true,timeout:12000}); }); }
+function needDb(){ if(!configured){ toast('Connect Supabase first (see the banner at the top).'); return true; } return false; }
+
+/* ---------- map ---------- */
+function initMap(){
+  map = L.map('map',{worldCopyJump:true}).setView([20.59,78.96],4);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+  layer = L.layerGroup().addTo(map);
+}
+function pinFor(it){
+  const color = it.status==='resolved' ? '#6b7280' : (it.kind==='lost' ? '#dc2626' : '#16a34a');
+  const m = L.circleMarker([it.lat,it.lng],{radius:9,color:'#fff',weight:2,fillColor:color,fillOpacity:.95});
+  m.bindTooltip(esc(it.title));
+  m.on('click',()=>openItem(it.id));
+  return m;
+}
+
+/* ---------- data ---------- */
+async function loadItems(){
+  if(!configured){ render(); return; }
+  const { data, error } = await sb.from('items').select('*').order('event_time',{ascending:false}).limit(1000);
+  if(error){ toast('Could not load items: '+error.message); return; }
+  state.items = data || [];
+  render();
+  const m = location.hash.match(/item=([0-9a-f-]{36})/i);
+  if(m) openItem(m[1]);
+}
+function subscribeRealtime(){
+  if(!configured) return;
+  sb.channel('items-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'items'},payload=>{
+      const { eventType, new:n, old:o } = payload;
+      if(eventType==='INSERT'){
+        if(!state.items.some(i=>i.id===n.id)){
+          state.items.unshift(n); state.fresh.add(n.id);
+          if(!state.user || n.user_id!==state.user.id) toast(`New ${n.kind} report: ${n.title}`);
+        }
+      } else if(eventType==='UPDATE'){
+        const i = state.items.findIndex(x=>x.id===n.id);
+        if(i>=0) state.items[i]=n; else state.items.unshift(n);
+      } else if(eventType==='DELETE'){
+        state.items = state.items.filter(x=>x.id!==o.id);
+      }
+      render();
+    })
+    .subscribe(status=>{
+      const on = status==='SUBSCRIBED';
+      $('#liveDot').classList.toggle('on',on);
+      $('#liveTxt').textContent = on ? 'live' : (status==='CLOSED'||status==='CHANNEL_ERROR' ? 'offline' : 'connecting');
+    });
+}
+
+/* ---------- filtering + render ---------- */
+function filtered(){
+  const q = $('#q').value.trim().toLowerCase();
+  const cat = $('#cat').value;
+  const days = +$('#when').value;
+  const showRes = $('#showResolved').checked;
+  const radius = +$('#radius').value;
+  let out = state.items.filter(it=>{
+    if(!showRes && it.status==='resolved') return false;
+    if(state.kind!=='all' && it.kind!==state.kind) return false;
+    if(cat && it.category!==cat) return false;
+    if(days && (Date.now()-new Date(it.event_time)) > days*864e5) return false;
+    if(q && !(`${it.title} ${it.description||''} ${it.place_text||''}`.toLowerCase().includes(q))) return false;
+    if(state.near && km(state.near.lat,state.near.lng,it.lat,it.lng) > radius) return false;
+    return true;
+  });
+  if(state.near) out.sort((a,b)=>km(state.near.lat,state.near.lng,a.lat,a.lng)-km(state.near.lat,state.near.lng,b.lat,b.lng));
+  return out;
+}
+function render(){
+  const items = filtered();
+  $('#count').textContent = `${items.length} report${items.length===1?'':'s'}` + (state.near?' near you':' worldwide');
+  const list = $('#list');
+  if(!items.length){
+    list.innerHTML = `<div class="empty">${configured?'No reports match yet.<br>Be the first to report one.':'Connect Supabase to see reports.'}</div>`;
+  } else {
+    list.innerHTML = items.slice(0,300).map(it=>`
+      <div class="item ${state.fresh.has(it.id)?'new':''}" data-id="${it.id}">
+        ${it.image_url ? `<img class="thumb" src="${esc(it.image_url)}" alt="" loading="lazy">` : `<div class="thumb">${catIcon(it.category)}</div>`}
+        <div style="min-width:0">
+          <span class="badge ${it.kind}">${it.kind}</span>
+          ${it.status==='resolved'?'<span class="badge resolved">resolved</span>':''}
+          <h3>${esc(it.title)}</h3>
+          <div class="meta">${esc(fmtExact(it.event_time))} · ${ago(it.event_time)}</div>
+          <div class="meta">${esc(it.place_text || it.lat.toFixed(3)+', '+it.lng.toFixed(3))} ${state.near?'· '+distTxt(it):''}</div>
+        </div>
+      </div>`).join('');
+  }
+  state.fresh.clear();
+  layer.clearLayers(); markers.clear();
+  items.forEach(it=>{ const m=pinFor(it); m.addTo(layer); markers.set(it.id,m); });
+}
+
+/* ---------- detail ---------- */
+async function openItem(id){
+  let it = state.items.find(i=>i.id===id);
+  if(!it && configured){ const r = await sb.from('items').select('*').eq('id',id).maybeSingle(); it = r.data; if(it) state.items.push(it); }
+  if(!it){ toast('That report no longer exists.'); return; }
+  history.replaceState(null,'','#item='+id);
+  map.setView([it.lat,it.lng],Math.max(map.getZoom(),15));
+  const mine = state.user && state.user.id===it.user_id;
+  $('#detailBody').innerHTML = `
+    <button class="close" data-close>&times;</button>
+    ${it.image_url?`<img class="hero" src="${esc(it.image_url)}" alt="">`:''}
+    <span class="badge ${it.kind}">${it.kind}</span> ${it.status==='resolved'?'<span class="badge resolved">resolved</span>':''}
+    <h2 style="margin:8px 0 0">${esc(it.title)}</h2>
+    <div class="kv">
+      <div>Category</div><div>${esc(CATS[it.category]||CATS.other)}</div>
+      <div>${it.kind==='lost'?'Lost on':'Found on'}</div><div><b>${esc(fmtExact(it.event_time))}</b> (${ago(it.event_time)})</div>
+      <div>Where</div><div>${esc(it.place_text||'')}<br><a target="_blank" rel="noopener" href="https://www.google.com/maps?q=${it.lat},${it.lng}">${it.lat.toFixed(5)}, ${it.lng.toFixed(5)} · open in Google Maps</a>${state.near?'<br>'+distTxt(it):''}</div>
+      ${it.description?`<div>Details</div><div>${esc(it.description).replace(/\n/g,'<br>')}</div>`:''}
+      <div>Posted</div><div>${esc(fmtExact(it.created_at))}</div>
+    </div>
+    <div class="contact-box" id="contactBox">Loading contact…</div>
+    <div class="actions">
+      <button class="btn" id="shareBtn">Copy link</button>
+      ${mine?`<button class="btn" id="resolveBtn">${it.status==='resolved'?'Reopen':'Mark as resolved'}</button><button class="btn danger" id="delBtn">Delete</button>`:''}
+    </div>`;
+  const dlg = $('#detailDlg'); if(!dlg.open) dlg.showModal();
+  $('#shareBtn').onclick = async ()=>{ const url=location.origin+location.pathname+'#item='+id; try{ await navigator.clipboard.writeText(url); toast('Link copied'); }catch{ prompt('Copy this link',url); } };
+  if(mine){
+    $('#resolveBtn').onclick = async ()=>{ const s = it.status==='resolved'?'open':'resolved'; const {error}=await sb.from('items').update({status:s}).eq('id',id); if(error) return toast(error.message); it.status=s; toast(s==='resolved'?'Marked as resolved 🎉':'Reopened'); dlg.close(); render(); };
+    $('#delBtn').onclick = async ()=>{ if(!confirm('Delete this report permanently?')) return; if(it.image_url){ const p=it.image_url.split('/item-photos/')[1]; if(p) await sb.storage.from('item-photos').remove([decodeURIComponent(p)]); } const {error}=await sb.from('items').delete().eq('id',id); if(error) return toast(error.message); state.items=state.items.filter(x=>x.id!==id); dlg.close(); render(); toast('Deleted'); };
+  }
+  const box = $('#contactBox');
+  if(!state.user){ box.innerHTML = 'Sign in to see how to contact the person who posted this. <button class="btn primary" id="signToView" style="margin-left:6px">Sign in</button>'; $('#signToView').onclick=()=>{ dlg.close(); openAuth(); }; return; }
+  const { data, error } = await sb.from('item_contacts').select('contact').eq('item_id',id).maybeSingle();
+  box.innerHTML = error||!data ? 'Contact not available.' : `<b>Contact:</b> ${esc(data.contact)}<div class="small" style="margin-top:6px">Ask for proof (a detail only the owner knows) before handing over a found item. Meet in a public place.</div>`;
+}
+
+/* ---------- auth ---------- */
+function openAuth(){ $('#authMsg').textContent=''; $('#authDlg').showModal(); }
+function updateAuthUi(){ $('#authBtn').textContent = state.user ? 'Sign out' : 'Sign in'; $('#authBtn').title = state.user ? state.user.email : ''; }
+async function initAuth(){
+  if(!configured) return;
+  const { data } = await sb.auth.getSession(); state.user = data.session?.user || null; updateAuthUi();
+  sb.auth.onAuthStateChange((_e,session)=>{ const was=!!state.user; state.user=session?.user||null; updateAuthUi(); if(state.user&&!was){ $('#authDlg').close(); toast('Signed in as '+state.user.email); } });
+}
+$('#authBtn').onclick = async ()=>{ if(needDb()) return; if(state.user){ await sb.auth.signOut(); toast('Signed out'); } else openAuth(); };
+$('#authForm').onsubmit = async e=>{
+  e.preventDefault(); if(needDb()) return;
+  const btn=$('#a_submit'); btn.disabled=true;
+  const { error } = await sb.auth.signInWithOtp({ email:$('#a_email').value.trim(), options:{ emailRedirectTo: location.origin+location.pathname } });
+  btn.disabled=false;
+  $('#authMsg').textContent = error ? error.message : 'Check your inbox for the sign-in link.';
+};
+$('#googleBtn').onclick = async ()=>{ if(needDb()) return; const {error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}}); if(error) $('#authMsg').textContent=error.message+' (Google must be enabled in Supabase first.)'; };
+
+/* ---------- report form ---------- */
+function setPicked(lat,lng,fly=true){
+  picked={lat,lng};
+  if(!formPin){ formPin=L.marker([lat,lng],{draggable:true}).addTo(formMap); formPin.on('dragend',()=>{const p=formPin.getLatLng(); setPicked(p.lat,p.lng,false); reverse(p.lat,p.lng);}); }
+  else formPin.setLatLng([lat,lng]);
+  if(fly) formMap.setView([lat,lng],Math.max(formMap.getZoom(),16));
+  $('#f_coords').textContent = `Pinned at ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+async function reverse(lat,lng){
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`); const j = await r.json();
+    if(j.display_name && !$('#f_place').value.trim()) $('#f_place').value = j.display_name.slice(0,300);
+  }catch{}
+}
+function openReport(){
+  if(needDb()) return;
+  if(!state.user){ toast('Please sign in to post a report.'); openAuth(); return; }
+  $('#reportDlg').showModal();
+  if(!$('#f_time').value) $('#f_time').value = localInputNow();
+  $('#f_time').max = localInputNow();
+  if(!formMap){
+    formMap = L.map('formMap').setView(map.getCenter(),Math.max(map.getZoom(),5));
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(formMap);
+    formMap.on('click',e=>{ setPicked(e.latlng.lat,e.latlng.lng,false); reverse(e.latlng.lat,e.latlng.lng); });
+  }
+  setTimeout(()=>formMap.invalidateSize(),150);
+}
+$('#reportBtn').onclick = openReport; $('#fabBtn').onclick = openReport;
+$('#f_gps').onclick = async ()=>{ try{ const p=await getPosition(); setPicked(p.lat,p.lng); reverse(p.lat,p.lng); }catch(e){ toast(e.message); } };
+async function placeSearch(){
+  const q=$('#f_search').value.trim(); if(!q) return;
+  try{ const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q='+encodeURIComponent(q)); const j=await r.json();
+    if(!j.length) return toast('Place not found'); setPicked(+j[0].lat,+j[0].lon); if(!$('#f_place').value.trim()) $('#f_place').value=j[0].display_name.slice(0,300);
+  }catch{ toast('Search failed'); }
+}
+$('#f_searchBtn').onclick = placeSearch;
+$('#f_search').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); placeSearch(); } });
+
+function compress(file,max=1200){
+  return new Promise((res,rej)=>{
+    const img=new Image(); const url=URL.createObjectURL(file);
+    img.onload=()=>{ const s=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); c.toBlob(b=>b?res(b):rej(new Error('Image conversion failed')),'image/jpeg',.82); };
+    img.onerror=()=>rej(new Error('Could not read that image')); img.src=url;
+  });
+}
+$('#form').onsubmit = async e=>{
+  e.preventDefault();
+  if(!state.user) return openAuth();
+  if(!picked) return toast('Pick the location on the map first.');
+  const btn=$('#f_submit'); btn.disabled=true; btn.textContent='Posting…';
+  try{
+    let image_url=null; const f=$('#f_photo').files[0];
+    if(f){
+      const blob=await compress(f); const path=`${state.user.id}/${crypto.randomUUID()}.jpg`;
+      const up=await sb.storage.from('item-photos').upload(path,blob,{contentType:'image/jpeg'});
+      if(up.error) throw up.error;
+      image_url=sb.storage.from('item-photos').getPublicUrl(path).data.publicUrl;
+    }
+    const row={ kind:document.querySelector('input[name=kind]:checked').value, title:$('#f_title').value.trim(), description:$('#f_desc').value.trim()||null, category:$('#f_cat').value,
+      event_time:new Date($('#f_time').value).toISOString(), lat:picked.lat, lng:picked.lng, place_text:$('#f_place').value.trim()||null, image_url };
+    const { data, error } = await sb.from('items').insert(row).select().single();
+    if(error) throw error;
+    const c = await sb.from('item_contacts').insert({ item_id:data.id, contact:$('#f_contact').value.trim() });
+    if(c.error){ await sb.from('items').delete().eq('id',data.id); throw c.error; }
+    if(!state.items.some(i=>i.id===data.id)) state.items.unshift(data);
+    state.fresh.add(data.id); render();
+    $('#form').reset(); $('#f_time').value=localInputNow(); picked=null; if(formPin){ formMap.removeLayer(formPin); formPin=null; } $('#f_coords').textContent='No location picked yet.';
+    $('#reportDlg').close(); toast('Report posted. It is now live on the map.');
+    map.setView([data.lat,data.lng],14);
+  }catch(err){ toast('Could not post: '+(err.message||err)); }
+  btn.disabled=false; btn.textContent='Post report';
+};
+
+/* ---------- UI wiring ---------- */
+document.querySelectorAll('.chip[data-kind]').forEach(b=>b.onclick=()=>{ document.querySelectorAll('.chip[data-kind]').forEach(x=>x.classList.remove('on')); b.classList.add('on'); state.kind=b.dataset.kind; render(); });
+['q','cat','when','radius','showResolved'].forEach(id=>$('#'+id).addEventListener(id==='q'?'input':'change',render));
+$('#nearBtn').onclick = async ()=>{
+  if(state.near){ state.near=null; $('#nearBtn').textContent='Near me'; $('#radius').style.display='none'; render(); return; }
+  try{ state.near=await getPosition(); $('#nearBtn').textContent='Near me ✓'; $('#radius').style.display=''; map.setView([state.near.lat,state.near.lng],13); render(); }catch(e){ toast(e.message); }
+};
+$('#list').addEventListener('click',e=>{ const el=e.target.closest('.item'); if(el) openItem(el.dataset.id); });
+document.addEventListener('click',e=>{ if(e.target.closest('[data-close]')) e.target.closest('dialog').close(); });
+$('#detailDlg').addEventListener('close',()=>history.replaceState(null,'',location.pathname));
+document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{ if(e.target===d) d.close(); }));
+Object.entries(CATS).forEach(([k,v])=>{ $('#cat').add(new Option(v,k)); $('#f_cat').add(new Option(v,k)); });
+$('#f_cat').value='other';
+setInterval(()=>{ if(!document.hidden) render(); },60000); // keep "x min ago" fresh
+
+/* ---------- start ---------- */
+initMap(); initAuth().then(()=>{ loadItems(); subscribeRealtime(); });
+</script>
+</body>
+</html>
