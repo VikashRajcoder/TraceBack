@@ -5,7 +5,6 @@ and every new report appears live on a world map for everyone else.
 Live demo: https://fascinating-manatee-5f7017.netlify.app
 Author: Vikash Raj
 
-<!-- Add screenshots here, e.g. ![Home](docs/home.png) -->
 Why this project
 
 Lost items are usually reported in scattered WhatsApp groups and notice boards, 
